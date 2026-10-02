@@ -111,7 +111,8 @@ def _die(message, hint=None):
 @click.option('--private', is_flag=True, help='make the mirror repo private')
 @click.option('--dry-run', is_flag=True, help='preview what would happen without actually doing it')
 @click.option('-u', '--username', help='your personal GitHub username')
-@click.option('-r', '--repo-name', 'mirror_repo_name', help='name for the mirror repo (default: <repo>-mirror)')
+@click.option('-r', '--repo-name', 'mirror_repo_name',
+              help='name for the mirror repo (default: <repo>-mirror; reuse a name to combine sources)')
 @click.option('-t', '--token', envvar='SHOMEI_GITHUB_TOKEN',
               help="GitHub personal access token (needs 'repo' scope). "
                    "can also be set via the SHOMEI_GITHUB_TOKEN env var")
@@ -163,6 +164,7 @@ def cli(private, dry_run, username, mirror_repo_name, token, email, display_name
         git_name = corporate_email
 
     repo_name = get_repo_name()
+    mirror_name_was_supplied = mirror_repo_name is not None
 
     if plain:
         console.print(f"git email: {corporate_email}")
@@ -220,6 +222,10 @@ def cli(private, dry_run, username, mirror_repo_name, token, email, display_name
             else:
                 console.print(f"[red]x {error}[/red]")
                 console.print("[dim]repo names can only contain letters, numbers, hyphens, underscores, and periods[/dim]\n")
+
+    uses_default_mirror_name = (
+        not mirror_name_was_supplied and mirror_repo_name == suggested_name
+    )
 
     # --- token ---
     if dry_run:
@@ -363,7 +369,10 @@ def cli(private, dry_run, username, mirror_repo_name, token, email, display_name
         # Repositories created by older shōmei versions have no local state.
         # Use their generated commit timestamps once to seed the hash-based
         # state, while keeping duplicate timestamps as separate commits.
-        if not synced_hashes and commits_to_mirror:
+        # Custom names can point several source repos at one mirror. Legacy
+        # commits have no source identity, so matching their dates can skip
+        # unrelated work from another source.
+        if uses_default_mirror_name and not synced_hashes and commits_to_mirror:
             legacy_dates = get_mirrored_commit_dates(
                 username,
                 mirror_repo_name,
@@ -501,16 +510,22 @@ def cli(private, dry_run, username, mirror_repo_name, token, email, display_name
                 if i % 10 == 0 and i > 0:
                     time.sleep(1)
 
-    # create a rich README for the repo
+    # Describe the combined target history, including commits from other sources.
     console.print("\n[cyan]creating README.md...[/cyan]")
-    synced_count = len(sync_record["commits"])
     source_dates = sorted((commit['date'] for commit in commits), key=_as_utc)
+    mirror_dates = get_mirrored_commit_dates(username, mirror_repo_name, token)
+    if mirror_dates is None:
+        mirror_dates = source_dates
+        synced_count = len(sync_record["commits"])
+    else:
+        synced_count = len(mirror_dates)
+    mirror_dates = sorted(mirror_dates, key=_as_utc) or source_dates
     readme_content = create_readme_content(
         username=username,
         repo_name=mirror_repo_name,
         num_commits=synced_count,
-        date_range_start=source_dates[0].strftime('%Y-%m-%d'),
-        date_range_end=source_dates[-1].strftime('%Y-%m-%d'),
+        date_range_start=mirror_dates[0].strftime('%Y-%m-%d'),
+        date_range_end=mirror_dates[-1].strftime('%Y-%m-%d'),
         original_repo=repo_name
     )
 
