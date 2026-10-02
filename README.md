@@ -111,6 +111,20 @@ shomei --yes
 | `-y, --yes` | skip confirmation prompts |
 | `--non-interactive` | never prompt; fail if a required value is missing (implies `--yes`) |
 
+To combine several work repositories in one personal mirror, use the same
+`--repo-name` in each source repository:
+
+```bash
+cd ~/work/project-a
+shomei -u your-personal-username -r work-monorepo --non-interactive
+
+cd ~/work/project-b
+shomei -u your-personal-username -r work-monorepo --non-interactive
+```
+
+Each source keeps its own incremental sync state, while all mirrored commits
+and README statistics are added to the shared target repository.
+
 ## how it works
 
 1. scans your git log for commits with your email
@@ -126,8 +140,10 @@ and only syncs source commits whose hashes have not been recorded yet. The
 state file is kept in the source repository's ignored `.shomei/` directory and
 contains no source code, messages, paths, or secrets.
 
-Mirrors created by an older shōmei version are migrated automatically from
-their existing generated commit timestamps on the next run.
+Default mirrors created by an older shōmei version are migrated automatically
+from their existing generated commit timestamps on the next run. For a custom
+shared target, shōmei skips that ambiguous migration because old commits do not
+identify which source repository they came from.
 
 **important**: no code ever leaves your machine. we only send timestamps to GitHub's API. your company's IP stays exactly where it is.
 
